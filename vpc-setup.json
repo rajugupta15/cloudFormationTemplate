@@ -1,0 +1,260 @@
+{
+		"AWSTemplateFormatVersion" : "2010-09-09",
+		"Parameters" : {
+			"amiId" : {
+				"Type" : "String",
+				"Default" : "ami-df83c9bf",
+				"Description" : "Enter WME AMI ID."
+			},
+			"InstanceType" : {
+				"Type" : "String",
+				"Default" : "t2.micro",
+				"AllowedValues" : ["t2.micro", "m1.small", "m1.large"],
+				"Description" : "Enter t1.micro, m1.small, or m1.large. Default is t1.micro."
+			},
+			"vpcCidr" : {
+				"Type" : "String",
+				"Default" : "10.0.0.0/16",
+				"AllowedValues" : ["10.0.0.0/16"],
+				"AllowedPattern":"(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+				"Description" : "Enter VPC Cidr block."
+			},
+			"DnsSupport" : {
+				"Type" : "String",
+				"Default" : "False",
+				"AllowedValues" : ["True", "False"],
+				"Description" : "Enter True if you want DNS support."
+			},
+			"DnsHostName" : {
+				"Type" : "String",
+				"Default" : "False",
+				"AllowedValues" : ["True", "False"],
+				"Description" : "Enter True if you want DNS hostName of to instance."
+			},
+			"PublicSubnet" : {
+				"Type" : "String",
+				"Default" : "10.0.10.0/24",
+				"AllowedValues" : ["10.0.10.0/24"],
+				"AllowedPattern":"(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+				"Description" : "Enter VPC public subnet cidr."
+			},
+			"PrivateSubnet" : {
+				"Type" : "String",
+				"Default" : "10.0.11.0/24",
+				"AllowedValues" : ["10.0.11.0/24"],
+				"AllowedPattern":"(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+				"Description" : "Enter VPC private subnet cidr."
+			},
+			"Zone" : {
+				"Type" : "String",
+				"Default" : "us-west-1a",
+				"AllowedValues" : ["us-west-1a", "us-west-1b"],
+				"Description" : "Enter AvailabilityZone."
+			},
+			"publicIP" : {
+				"Type" : "String",
+				"Default" : "10.0.10.10",
+				"AllowedPattern":"(\\d{1,2})\\.(\\d{1})\\.(\\d{1,2})\\.(\\d{1,2})",
+				"Description" : "Enter Public ip."
+			},
+			"privateIP" : {
+				"Type" : "String",
+				"Default" : "10.0.11.10",
+				"AllowedPattern":"(\\d{1,2})\\.(\\d{1})\\.(\\d{1,2})\\.(\\d{1,2})",
+				"Description" : "Enter Private ip."
+			},
+			"sshAccessKey" : {
+				"Type" : "String",
+				"Default" : "WME_west_1",
+				"Description" : "ssh key pair."
+			}
+		},
+		"Resources" : {
+				"myVPC" : {
+					"Type" : "AWS::EC2::VPC",
+					"Properties" : {
+						"CidrBlock" : {"Ref" : "vpcCidr"},
+						"EnableDnsSupport" : {"Ref" : "DnsSupport"},
+						"EnableDnsHostnames" : {"Ref" : "DnsHostName"},
+						"InstanceTenancy" : "default",
+						"Tags" : [ {"Key" : "Name", "Value" : "TestVpc"} ]
+					}
+				},
+				"InternateGateway" : {
+					"Type" : "AWS::EC2::InternetGateway",
+					"Properties" : {
+						"Tags" : [ {"Key" : "Name", "Value" : "TestInternateGateway"}]
+					}
+				},	
+				"AttachGateway" : {
+					"Type" : "AWS::EC2::VPCGatewayAttachment",
+					"DependsOn" : "myVPC",
+					"Properties" : {
+						"VpcId" : { "Ref" : "myVPC" },
+						"InternetGatewayId" : { "Ref" : "InternateGateway" }
+					}
+				},
+				"NAT" : {
+					"Type" : "AWS::EC2::NatGateway",
+					"DependsOn" : [ "EIP", "publicSubnet" ],
+					"Properties" : {
+						"AllocationId" : { "Fn::GetAtt" : ["EIP", "AllocationId"]},
+						"SubnetId" : { "Ref" : "publicSubnet"}
+					}
+				},
+				"EIP" : {
+					"Type" : "AWS::EC2::EIP",
+					"Properties" : {
+						"Domain" : "vpc"
+					}
+				},
+				"privateSubnet" : {
+					"Type" : "AWS::EC2::Subnet",
+					"DependsOn" : [ "EIP", "publicSubnet" ],
+					"Properties" : {
+						"VpcId" : { "Ref" : "myVPC" },
+						"CidrBlock" : {"Ref" : "PrivateSubnet"},
+						"AvailabilityZone" : {"Ref" : "Zone"},
+						"Tags" : [ { "Key" : "Name", "Value" : "TestPrivateSubnet" } ]
+					}
+				},
+				"publicSubnet" : {
+					"Type" : "AWS::EC2::Subnet",
+					"DependsOn" : "myVPC",
+					"Properties" : {
+						"VpcId" : { "Ref" : "myVPC" },
+						"CidrBlock" : {"Ref": "PublicSubnet"},
+						"AvailabilityZone" : {"Ref" : "Zone"},
+						"Tags" : [ { "Key" : "Name", "Value" : "TestPublicSubnet" } ]
+					}
+				},
+				"PublicRouteTable" : {
+					"Type" : "AWS::EC2::RouteTable",
+					"DependsOn" : "myVPC",
+					"Properties" : {
+						"VpcId" : { "Ref" : "myVPC" },
+						"Tags" : [ { "Key" : "Name", "Value" : "TestPublicRouteTable" } ]
+					}
+				},
+				"PrivateRouteTable" : {
+					"Type" : "AWS::EC2::RouteTable",
+					"DependsOn" : "myVPC",
+					"Properties" : {
+						"VpcId" : { "Ref" : "myVPC" },
+						"Tags" : [ { "Key" : "Name", "Value" : "TestPrivateRouteTable" } ]
+					}
+				},
+				"PublicRoute" : {
+					"Type" : "AWS::EC2::Route",
+					"DependsOn" : [ "PublicRouteTable", "InternateGateway" ],
+					"Properties" : {
+						"RouteTableId" : { "Ref" : "PublicRouteTable" },
+						"DestinationCidrBlock" : "0.0.0.0/0",
+						"GatewayId" : { "Ref" : "InternateGateway" }
+					}	
+				},
+				"PrivateRoute" : {
+					"Type" : "AWS::EC2::Route",
+					"DependsOn" : [ "PrivateRouteTable", "NAT" ],
+					"Properties" : {
+						"RouteTableId" : { "Ref" : "PrivateRouteTable" },
+						"DestinationCidrBlock" : "0.0.0.0/0",
+						"NatGatewayId" : { "Ref" : "NAT" }
+					}
+				},
+				"priSubnetRouteTableAssociation" : {
+					"Type" : "AWS::EC2::SubnetRouteTableAssociation",
+					"DependsOn" : [ "privateSubnet", "PrivateRouteTable" ],
+					"Properties" : {
+						"SubnetId" : { "Ref" : "privateSubnet" },
+						"RouteTableId" : { "Ref" : "PrivateRouteTable" }
+					}
+				},
+				"pubSubnetRouteTableAssociation" : {
+					"Type" : "AWS::EC2::SubnetRouteTableAssociation",
+					"DependsOn" : [ "publicSubnet", "PublicRouteTable" ],
+					"Properties" : {
+						"SubnetId" : { "Ref" : "publicSubnet" },
+						"RouteTableId" : { "Ref" : "PublicRouteTable" }
+					}
+				},
+				"TestSG" : {
+                        "Type" : "AWS::EC2::SecurityGroup",
+                        "DependsOn" : [ "myVPC" ],
+                        "Properties" : {
+                                "GroupDescription" : "Security Group",
+                                "VpcId" : {"Ref" : "myVPC"},
+                                "SecurityGroupIngress" : [
+                                        { "IpProtocol" : "tcp", "FromPort" : "1", "ToPort" : "65535", "CidrIp" : { "Ref" : "vpcCidr" } },
+                                        { "IpProtocol" : "tcp", "FromPort" : "1", "ToPort" : "65535", "CidrIp" : "0.0.0.0/0" }
+                                ]
+                        }
+                },
+
+				"PublicInstance" : {
+                        "Type" : "AWS::EC2::Instance",
+                        "DependsOn" : [ "myVPC", "TestSG", "publicSubnet", "privateSubnet" ],
+                        "Properties" : {
+                                "InstanceType" : { "Ref" : "InstanceType" },
+                                "ImageId" : {"Ref"  : "amiId"},
+                                "KeyName" : { "Ref" : "sshAccessKey" },
+                                "SourceDestCheck" : "true",
+								"NetworkInterfaces": [ {
+										"AssociatePublicIpAddress": "true",
+										"PrivateIpAddress" : {"Ref" : "publicIP"},
+										"DeleteOnTermination": "true",
+										"DeviceIndex": "0",
+										"SubnetId": { "Ref" : "publicSubnet" },
+										"GroupSet": [{ "Ref" : "TestSG" } ]
+								}],
+                                "Tags" : [ {"Key" : "Name", "Value" : "public-subnet-instance-01"} ]
+                        }
+                },
+                "PrivateInstance" : {
+                        "Type" : "AWS::EC2::Instance",
+                        "DependsOn" : [ "myVPC", "TestSG", "publicSubnet", "privateSubnet" ],
+                        "Properties" : {
+                                "InstanceType" : { "Ref" : "InstanceType" },
+                                "ImageId" : {"Ref"  : "amiId"},
+                                "KeyName" : { "Ref" : "sshAccessKey" },
+                                "SourceDestCheck" : "true",
+								"NetworkInterfaces": [ {
+										"PrivateIpAddress" : {"Ref" : "privateIP"},
+										"DeleteOnTermination": "true",
+										"DeviceIndex": "0",
+										"SubnetId": { "Ref" : "privateSubnet" },
+										"GroupSet": [{ "Ref" : "TestSG" } ]
+								}],
+                                "Tags" : [ {"Key" : "Name", "Value" : "private-subnet-instance-01"} ]
+                        }
+                }
+
+
+		},
+	"Outputs" : {
+		"myVPC" : {
+			"Description" : "VPC",
+			"Value" : {"Ref" : "myVPC"}
+		},
+		"PublicDNSName" : {
+			"Description" : "Public Instance DNS",
+			"Value" : { "Fn::GetAtt" : [ "PublicInstance" , "PublicDnsName" ] }
+		},
+		"PublicInstanceIP" : {
+			"Description" : "Public Instance IP",
+			"Value" : { "Fn::GetAtt" : [ "PublicInstance" , "PrivateIp" ] }
+		},
+		"PrivateInstanceIP" : {
+			"Description" : "Private Instance IP",
+			"Value" : { "Fn::GetAtt" : [ "PrivateInstance" , "PrivateIp" ] }
+		},
+		"PublicInstanceAvailabilityZone" : {
+			"Description" : "Public Instance Availability Zone",
+			"Value" : { "Fn::GetAtt" : [ "PublicInstance" , "AvailabilityZone" ] }
+		},
+		"PrivateInstanceAvailabilityZone" : {
+			"Description" : "Public Instance Availability Zone",
+			"Value" : { "Fn::GetAtt" : [ "PrivateInstance" , "AvailabilityZone" ] }
+		}
+	}
+}
